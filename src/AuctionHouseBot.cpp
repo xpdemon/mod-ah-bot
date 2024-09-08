@@ -82,7 +82,7 @@ uint32 AuctionHouseBot::getStackCount(AHBConfig* config, uint32 max)
             ret = urand(1, 4) * 4;
         }
 
-        if (max % 3 == 0) // 3, 6, 9
+        if (max % 3 == 0) // 3, 6, 9, 18
         {
             ret = urand(1, 3) * 3;
         }
@@ -413,7 +413,7 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
             //
             // Perform a new bid on the auction
             //
-
+        
             if (auction->bidder)
             {
                 if (auction->bidder != AHBplayer->GetGUID())
@@ -421,21 +421,21 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
                     //
                     // Mail to last bidder and return their money
                     //
-
+        
                     auto trans = CharacterDatabase.BeginTransaction();
-
+        
                     sAuctionMgr->SendAuctionOutbiddedMail(auction, bidprice, session->GetPlayer(), trans);
                     CharacterDatabase.CommitTransaction  (trans);
                 }
             }
-
+        
             auction->bidder = AHBplayer->GetGUID();
             auction->bid    = bidprice;
-
+        
             //
             // Save the auction into database
             //
-
+        
             CharacterDatabase.Execute("UPDATE auctionhouse SET buyguid = '{}', lastbid = '{}' WHERE id = '{}'", auction->bidder.GetCounter(), auction->bid, auction->Id);
         }
         else
@@ -487,11 +487,11 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
         {
             if (bought)
             {
-                LOG_INFO("module", "AHBot [{}]: Bought , id={}, ah={}, item={}, start={}, current={}, buyout={}", _id, auction->Id, auction->GetHouseId(), auction->item_template, auction->startbid, currentprice, auction->buyout);
+                LOG_INFO("module", "AHBot [{}]: Bought , id={}, ah={}, item={}, start={}, current={}, buyout={}", _id, prototype->ItemId, auction->GetHouseId(), auction->item_template, auction->startbid, currentprice, auction->buyout);
             }
             else
             {
-                LOG_INFO("module", "AHBot [{}]: New bid, id={}, ah={}, item={}, start={}, current={}, buyout={}", _id, auction->Id, auction->GetHouseId(), auction->item_template, auction->startbid, currentprice, auction->buyout);
+                LOG_INFO("module", "AHBot [{}]: New bid, id={}, ah={}, item={}, start={}, current={}, buyout={}", _id, prototype->ItemId, auction->GetHouseId(), auction->item_template, auction->startbid, currentprice, auction->buyout);
             }
         }
     }
@@ -938,44 +938,7 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
                 item->SetItemRandomProperties(randomPropertyId);
             }
 
-            // 
-            // Determine the price and stack size
-            // 
-
-            uint64 buyoutPrice = 0;
-            uint64 bidPrice    = 0;
-            uint32 stackCount  = 1;
-
-            if (config->SellMethod)
-            {
-                buyoutPrice = prototype->BuyPrice;
-            }
-            else
-            {
-                buyoutPrice = prototype->SellPrice;
-            }
-
-            if (prototype->Quality <= AHB_MAX_QUALITY)
-            {
-                if (config->GetMaxStack(prototype->Quality) > 1 && item->GetMaxStackCount() > 1)
-                {
-                    stackCount = minValue(getStackCount(config, item->GetMaxStackCount()), config->GetMaxStack(prototype->Quality));
-                }
-                else if (config->GetMaxStack(prototype->Quality) == 0 && item->GetMaxStackCount() > 1)
-                {
-                    stackCount = getStackCount(config, item->GetMaxStackCount());
-                }
-                else
-                {
-                    stackCount = 1;
-                }
-
-                buyoutPrice *= urand(config->GetMinPrice(prototype->Quality), config->GetMaxPrice(prototype->Quality));
-                buyoutPrice /= 100;
-                bidPrice     = buyoutPrice * urand(config->GetMinBidPrice(prototype->Quality), config->GetMaxBidPrice(prototype->Quality));
-                bidPrice    /= 100;
-            }
-            else
+            if (prototype->Quality > AHB_MAX_QUALITY)
             {
                 err++;
 
@@ -986,6 +949,54 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
 
                 item->RemoveFromUpdateQueueOf(AHBplayer);
                 continue;
+            }
+
+            // 
+            // Determine the price
+            // 
+
+            uint64 buyoutPrice = 0;
+            uint64 bidPrice    = 0;
+            uint32 stackCount  = 1;
+
+            if (config->SellAtMarketPrice)
+            {
+                buyoutPrice = config->GetItemPrice(itemID);
+            }
+
+            if (buyoutPrice == 0)
+            {
+                if (config->SellMethod)
+                {
+                    buyoutPrice = prototype->BuyPrice;
+                }
+                else
+                {
+                    buyoutPrice = prototype->SellPrice;
+                }
+            }
+
+            buyoutPrice = buyoutPrice * urand(config->GetMinPrice(prototype->Quality), config->GetMaxPrice(prototype->Quality));
+            buyoutPrice = buyoutPrice / 100;
+
+            bidPrice    = buyoutPrice * urand(config->GetMinBidPrice(prototype->Quality), config->GetMaxBidPrice(prototype->Quality));
+            bidPrice    = bidPrice / 100;
+
+            // 
+            // Determine the stack size
+            // 
+
+            if (config->GetMaxStack(prototype->Quality) > 1 && item->GetMaxStackCount() > 1)
+            {
+                stackCount = minValue(getStackCount(config, item->GetMaxStackCount()), config->GetMaxStack(prototype->Quality));
+            }
+            else if (config->GetMaxStack(prototype->Quality) == 0 && item->GetMaxStackCount() > 1)
+            {
+                stackCount = getStackCount(config, item->GetMaxStackCount());
+            }
+            else
+            {
+                stackCount = 1;
             }
 
             item->SetCount(stackCount);
@@ -1222,7 +1233,7 @@ void AuctionHouseBot::Commands(AHBotCommand command, uint32 ahMapID, uint32 col,
     case 6:
         config = _hordeConfig;
         break;
-    case 7:
+    default:
         config = _neutralConfig;
         break;
     }
@@ -1273,13 +1284,15 @@ void AuctionHouseBot::Commands(AHBotCommand command, uint32 ahMapID, uint32 col,
 
         if (state == 0)
         {
-            config->AHBBuyer = false;
-            LOG_ERROR("module", "AHBot: Buyer disabled from console");
+            _allianceConfig->AHBBuyer = false;
+            _hordeConfig->AHBBuyer    = false;
+            _neutralConfig->AHBBuyer  = false;
         }
         else
         {
-            config->AHBBuyer = true;
-            LOG_ERROR("module", "AHBot: Buyer enabled from console");
+            _allianceConfig->AHBBuyer = true;
+            _hordeConfig->AHBBuyer    = true;
+            _neutralConfig->AHBBuyer  = true;
         }
 
         break;
@@ -1291,13 +1304,35 @@ void AuctionHouseBot::Commands(AHBotCommand command, uint32 ahMapID, uint32 col,
 
         if (state == 0)
         {
-            config->AHBSeller = false;
-            LOG_ERROR("module", "AHBot: Seller disabled from console");
+            _allianceConfig->AHBSeller = false;
+            _hordeConfig->AHBSeller    = false;
+            _neutralConfig->AHBSeller  = false;
         }
         else
         {
-            config->AHBSeller = true;
-            LOG_ERROR("module", "AHBot: Seller enabled from console");
+            _allianceConfig->AHBSeller = true;
+            _hordeConfig->AHBSeller    = true;
+            _neutralConfig->AHBSeller  = true;
+        }
+
+        break;
+    }
+    case AHBotCommand::useMarketPrice:
+    {
+        char* param1 = strtok(args, " ");
+        uint32 state = (uint32)strtoul(param1, NULL, 0);
+
+        if (state == 0)
+        {
+            _allianceConfig->SellAtMarketPrice = false;
+            _hordeConfig->SellAtMarketPrice    = false;
+            _neutralConfig->SellAtMarketPrice  = false;
+        }
+        else
+        {
+            _allianceConfig->SellAtMarketPrice = true;
+            _hordeConfig->SellAtMarketPrice    = true;
+            _neutralConfig->SellAtMarketPrice  = true;
         }
 
         break;
@@ -1308,6 +1343,10 @@ void AuctionHouseBot::Commands(AHBotCommand command, uint32 ahMapID, uint32 col,
 
         AuctionHouseObject::AuctionEntryMap::iterator itr;
         itr = auctionHouse->GetAuctionsBegin();
+
+        //
+        // Iterate through all the autions and if they belong to the bot, make them expired
+        //
 
         while (itr != auctionHouse->GetAuctionsEnd())
         {
@@ -1381,26 +1420,34 @@ void AuctionHouseBot::Commands(AHBotCommand command, uint32 ahMapID, uint32 col,
         uint32 orangei  = (uint32) strtoul(param13, NULL, 0);
         uint32 yellowi  = (uint32) strtoul(param14, NULL, 0);
 
-        auto trans = WorldDatabase.BeginTransaction();
-
-        trans->Append("UPDATE mod_auctionhousebot SET percentgreytradegoods = '{}'   WHERE auctionhouse = '{}'", greytg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentwhitetradegoods = '{}'  WHERE auctionhouse = '{}'", whitetg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentgreentradegoods = '{}'  WHERE auctionhouse = '{}'", greentg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentbluetradegoods = '{}'   WHERE auctionhouse = '{}'", bluetg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentpurpletradegoods = '{}' WHERE auctionhouse = '{}'", purpletg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentorangetradegoods = '{}' WHERE auctionhouse = '{}'", orangetg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentyellowtradegoods = '{}' WHERE auctionhouse = '{}'", yellowtg, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentgreyitems = '{}'        WHERE auctionhouse = '{}'", greyi, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentwhiteitems = '{}'       WHERE auctionhouse = '{}'", whitei, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentgreenitems = '{}'       WHERE auctionhouse = '{}'", greeni, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentblueitems = '{}'        WHERE auctionhouse = '{}'", bluei, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentpurpleitems = '{}'      WHERE auctionhouse = '{}'", purplei, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentorangeitems = '{}'      WHERE auctionhouse = '{}'", orangei, ahMapID);
-        trans->Append("UPDATE mod_auctionhousebot SET percentyellowitems = '{}'      WHERE auctionhouse = '{}'", yellowi, ahMapID);
-
-        WorldDatabase.CommitTransaction(trans);
+        //
+        // Setup the percentage in the configuration first, so validity test can be performed
+        //
 
         config->SetPercentages(greytg, whitetg, greentg, bluetg, purpletg, orangetg, yellowtg, greyi, whitei, greeni, bluei, purplei, orangei, yellowi);
+
+        //
+        // Save the results into the database (after the tests)
+        //
+
+        auto trans = WorldDatabase.BeginTransaction();
+
+        trans->Append("UPDATE mod_auctionhousebot SET percentgreytradegoods   = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_GREY_TG)  , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentwhitetradegoods  = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_WHITE_TG) , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentgreentradegoods  = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_GREEN_TG) , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentbluetradegoods   = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_BLUE_TG)  , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentpurpletradegoods = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_PURPLE_TG), ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentorangetradegoods = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_ORANGE_TG), ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentyellowtradegoods = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_YELLOW_TG), ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentgreyitems        = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_GREY_I)   , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentwhiteitems       = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_WHITE_I)  , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentgreenitems       = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_GREEN_I)  , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentblueitems        = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_BLUE_I)   , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentpurpleitems      = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_PURPLE_I) , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentorangeitems      = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_ORANGE_I) , ahMapID);
+        trans->Append("UPDATE mod_auctionhousebot SET percentyellowitems      = '{}' WHERE auctionhouse = '{}'", config->GetPercentages(AHB_YELLOW_I) , ahMapID);
+
+        WorldDatabase.CommitTransaction(trans);
 
         break;
     }
