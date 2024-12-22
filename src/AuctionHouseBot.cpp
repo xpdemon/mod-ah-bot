@@ -87,9 +87,9 @@ uint32 AuctionHouseBot::getStackCount(AHBConfig* config, uint32 max)
         return 1;
     }
 
-    // 
+    //
     // Organize the stacks in a pseudo random way
-    // 
+    //
 
     if (config->DivisibleStacks)
     {
@@ -118,9 +118,9 @@ uint32 AuctionHouseBot::getStackCount(AHBConfig* config, uint32 max)
         return ret;
     }
 
-    // 
+    //
     // Totally random
-    // 
+    //
 
     return urand(1, max);
 }
@@ -436,7 +436,7 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
             //
             // Perform a new bid on the auction
             //
-        
+
             if (auction->bidder)
             {
                 if (auction->bidder != AHBplayer->GetGUID())
@@ -444,21 +444,21 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
                     //
                     // Mail to last bidder and return their money
                     //
-        
+
                     auto trans = CharacterDatabase.BeginTransaction();
-        
+
                     sAuctionMgr->SendAuctionOutbiddedMail(auction, bidprice, session->GetPlayer(), trans);
                     CharacterDatabase.CommitTransaction  (trans);
                 }
             }
-        
+
             auction->bidder = AHBplayer->GetGUID();
             auction->bid    = bidprice;
-        
+
             //
             // Save the auction into database
             //
-        
+
             CharacterDatabase.Execute("UPDATE auctionhouse SET buyguid = '{}', lastbid = '{}' WHERE id = '{}'", auction->bidder.GetCounter(), auction->bid, auction->Id);
         }
         else
@@ -483,16 +483,16 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
             auction->bidder = AHBplayer->GetGUID();
             auction->bid    = auction->buyout;
 
-            // 
+            //
             // Send mails to buyer & seller
-            // 
+            //
 
             sAuctionMgr->SendAuctionSuccessfulMail(auction, trans);
             sAuctionMgr->SendAuctionWonMail       (auction, trans);
 
-            // 
+            //
             // Removes any trace of the item
-            // 
+            //
 
             auction->DeleteFromDB(trans);
 
@@ -526,18 +526,18 @@ void AuctionHouseBot::Buy(Player* AHBplayer, AHBConfig* config, WorldSession* se
 
 void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
 {
-    // 
+    //
     // Check if disabled
-    // 
+    //
 
     if (!config->AHBSeller)
     {
         return;
     }
 
-    // 
+    //
     // Check the given limits
-    // 
+    //
 
     uint32 minItems = config->GetMinItems();
     uint32 maxItems = config->GetMaxItems();
@@ -547,11 +547,11 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
         return;
     }
 
-    // 
+    //
     // Retrieve the auction house situation
-    // 
+    //
 
-    AuctionHouseEntry const* ahEntry = sAuctionMgr->GetAuctionHouseEntryFromFactionTemplate(config->GetAHFID());
+    AuctionHouseEntry const* ahEntry = sAuctionMgr->GetAuctionHouseEntryFromHouse(config->GetAHFID());
 
     if (!ahEntry)
     {
@@ -567,9 +567,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
 
     auctionHouse->Update();
 
-    // 
+    //
     // Check if we are clear to proceed
-    // 
+    //
 
     bool   aboveMin = false;
     bool   aboveMax = false;
@@ -609,9 +609,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
         items = (maxItems - auctions);
     }
 
-    // 
+    //
     // Retrieve the configuration for this run
-    // 
+    //
 
     uint32 greyTGcount   = config->GetMaximum(AHB_GREY_TG);
     uint32 whiteTGcount  = config->GetMaximum(AHB_WHITE_TG);
@@ -771,12 +771,12 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
             if (itemID == 0)
             {
                 binEmpty++;
-            
+
                 if (config->DebugOutSeller)
                 {
                     LOG_ERROR("module", "AHBot [{}]: No item could be selected from the bins", _id);
                 }
-            
+
                 break;
             }
         }
@@ -787,9 +787,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
             continue;
         }
 
-        // 
+        //
         // Retrieve information about the selected item
-        // 
+        //
 
         ItemTemplate const* prototype = sObjectMgr->GetItemTemplate(itemID);
 
@@ -819,9 +819,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
             continue;
         }
 
-        // 
+        //
         // Start interacting with the item by adding a random property
-        // 
+        //
 
         item->AddToUpdateQueueOf(AHBplayer);
 
@@ -845,9 +845,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
             continue;
         }
 
-        // 
+        //
         // Determine the price
-        // 
+        //
 
         uint64 buyoutPrice = 0;
         uint64 bidPrice    = 0;
@@ -876,9 +876,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
         bidPrice    = buyoutPrice * urand(config->GetMinBidPrice(prototype->Quality), config->GetMaxBidPrice(prototype->Quality));
         bidPrice    = bidPrice / 100;
 
-        // 
+        //
         // Determine the stack size
-        // 
+        //
 
         if (config->GetMaxStack(prototype->Quality) > 1 && item->GetMaxStackCount() > 1)
         {
@@ -895,27 +895,27 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
 
         item->SetCount(stackCount);
 
-        // 
+        //
         // Determine the auction time
-        // 
+        //
 
         uint32 etime = getElapsedTime(config->ElapsingTimeClass);
 
-        // 
+        //
         // Determine the deposit
-        // 
+        //
 
         uint32 dep   = sAuctionMgr->GetAuctionDeposit(ahEntry, etime, item, stackCount);
 
-        // 
+        //
         // Perform the auction
-        // 
+        //
 
         auto trans = CharacterDatabase.BeginTransaction();
 
         AuctionEntry* auctionEntry      = new AuctionEntry();
         auctionEntry->Id                = sObjectMgr->GenerateAuctionID();
-        auctionEntry->houseId           = AuctionHouseId(config->GetAHID());
+        auctionEntry->houseId           = AuctionHouses(config->GetAHID());
         auctionEntry->item_guid         = item->GetGUID();
         auctionEntry->item_template     = item->GetEntry();
         auctionEntry->itemCount         = item->GetCount();
@@ -935,9 +935,9 @@ void AuctionHouseBot::Sell(Player* AHBplayer, AHBConfig* config)
 
         CharacterDatabase.CommitTransaction(trans);
 
-        // 
+        //
         // Increments the number of items presents in the auction
-        // 
+        //
 
         switch (choice)
         {
@@ -1438,9 +1438,9 @@ void AuctionHouseBot::Commands(AHBotCommand command, uint32 ahMapID, uint32 col,
 
 void AuctionHouseBot::Initialize(AHBConfig* allianceConfig, AHBConfig* hordeConfig, AHBConfig* neutralConfig)
 {
-    // 
+    //
     // Save the pointer for the configurations
-    // 
+    //
 
     _allianceConfig = allianceConfig;
     _hordeConfig    = hordeConfig;
